@@ -42,6 +42,7 @@ exports.fn = function(item) {
       let svgParent = item.closestElem("svg");
       if (svgParent) {
         item.addAttr({ name: "stroke", local: "stroke", value: "context-stroke", prefix: "" });
+        item.addAttr({ name: "stroke-opacity", local: "stroke-opacity", value: "context-stroke-opacity", prefix: "" });
       } 
     }
   }

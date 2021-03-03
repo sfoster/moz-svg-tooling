@@ -3,7 +3,7 @@ const addLicensePlugin = require('./plugins/add-license.js');
 const contextFillStrokePlugin = require('./plugins/context-fill-stroke.js');
 
 module.exports = {
-  multipass: false, // boolean. false by default
+  multipass: true, // boolean. false by default
   plugins: extendDefaultPlugins([
     {
       name: 'convertPathData',
@@ -12,6 +12,16 @@ module.exports = {
     {
       name: 'mergePaths',
       active: false
+    },
+    {
+      name: 'inlineStyles',
+      active: true,
+      params: {
+        onlyMatchedOnce: false,
+        removeMatchedSelectors: true,
+        useMqs: ['', 'screen'],
+        usePseudos: [''],
+      }
     },
     {
       name: "removeBogusIdAndDataName",
