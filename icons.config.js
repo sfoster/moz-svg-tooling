@@ -52,7 +52,28 @@ module.exports = {
             return true;
           }
         }
-      }
+      },
+    },
+    {
+      name: "add16x16WithHeight",
+      description: "All the icons should have width=16 and height=16 attributes on the SVG element",
+      type: "perItem",
+      fn: (item) => {
+        if (item.isElem("svg")) {
+          item.addAttr({
+                  name: 'width',
+                  value: 16,
+                  prefix: '',
+                  local: 'width',
+          });
+          item.addAttr({
+                  name: 'height',
+                  value: 16,
+                  prefix: '',
+                  local: 'height',
+          });
+        }
+      },
     },
     contextFillStrokePlugin,
     addLicensePlugin,
