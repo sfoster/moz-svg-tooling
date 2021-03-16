@@ -9,11 +9,6 @@ const licenseText = ` This Source Code Form is subject to the terms of the Mozil
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. `;
 
-/**
- * Add a license comment
- *
- * @author Sam Foster
- */
 exports.fn = function(data, params) {
   data.content.unshift({
     comment: licenseText
