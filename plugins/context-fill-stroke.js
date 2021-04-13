@@ -13,7 +13,6 @@ exports.fn = function(item) {
     let hasFill, hasStroke, hasOpacity;
     let properties = [];
     let styleAttr = item.attr("style");
-    console.log("got style:", styleAttr.value);
     for (let property of styleAttr.value.split(/;\s*/)) {
       let [name, value] = property.split(/\s*:\s*/);
       switch (name.toLowerCase()) {
@@ -34,15 +33,15 @@ exports.fn = function(item) {
     if (hasFill) {
       let svgParent = item.closestElem("svg");
       if (svgParent) {
-        item.addAttr({ name: "fill", local: "fill", value: "context-fill", prefix: "" });
-        item.addAttr({ name: "fill-opacity", local: "fill-opacity", value: "context-fill-opacity", prefix: "" });
+        svgParent.addAttr({ name: "fill", local: "fill", value: "context-fill", prefix: "" });
+        svgParent.addAttr({ name: "fill-opacity", local: "fill-opacity", value: "context-fill-opacity", prefix: "" });
       } 
     }
     if (hasStroke) {
       let svgParent = item.closestElem("svg");
       if (svgParent) {
-        item.addAttr({ name: "stroke", local: "stroke", value: "context-stroke", prefix: "" });
-        item.addAttr({ name: "stroke-opacity", local: "stroke-opacity", value: "context-stroke-opacity", prefix: "" });
+        svgParent.addAttr({ name: "stroke", local: "stroke", value: "context-stroke", prefix: "" });
+        svgParent.addAttr({ name: "stroke-opacity", local: "stroke-opacity", value: "context-stroke-opacity", prefix: "" });
       } 
     }
   }

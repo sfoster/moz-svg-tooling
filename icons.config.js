@@ -9,7 +9,7 @@ function getIconSizeForElem(item) {
     "0 0 16 16": 16,
     "0 0 12 12": 12,
   };
-  let svg = item.isElem('svg') || item.closestElem('svg');
+  let svg = item.isElem('svg') ? item : item.closestElem('svg');
   let viewBox = svg.attr("viewBox").value;
   let size = vbSizeMapping[viewBox];
   return size;
@@ -19,8 +19,24 @@ module.exports = {
   multipass: true, // boolean. false by default
   plugins: extendDefaultPlugins([
     {
+      name: "removeClassedPlaceholderRect",
+      description: "Many of the icons have a empty fill:none rect, possible via a class of cls-2; remove it",
+      type: "perItem",
+      active: true,
+      fn: (item) => {
+        if (item.hasAttr("class") && item.attr("class").value.includes("cls-2")) {
+          return false;
+        }
+        let styleValue = item.hasAttr("style") && item.attr("style").value;
+        if (styleValue && styleValue.match(/\s*fill\s*:\s*none[;\s]*/)) {
+          return false;
+        }
+        return true;
+      }
+    },
+    {
       name: 'convertPathData',
-      active: false,
+      active: true,
       params: {
         'straightCurves': false,
         'lineShorthands': false,
@@ -28,12 +44,15 @@ module.exports = {
       }
     },
     {
-      name: 'cleanupNumericValues',
+      name: 'mergePaths',
       active: false
     },
     {
-      name: 'mergePaths',
-      active: false
+      name: 'cleanupNumericValues',
+      active: true,
+      params: {
+        floatPrecision: 2
+      }
     },
     {
       name: 'removeViewBox',
@@ -48,6 +67,36 @@ module.exports = {
         useMqs: ['', 'screen'],
         usePseudos: [''],
       }
+    },
+    {
+      name: "removePlaceholderRect",
+      description: "Many of the icon SVGs have an empty, full-size, fill=none rect; remove it.",
+      type: "perItem",
+      active: false,
+      fn: (item) => {
+        // runs after the rect and other shapes are converted to paths by convertShapeToPath plugin
+        if (item.isElem("path")) {
+          let size = getIconSizeForElem(item);
+          let d = item.attr("d").value;
+          // if its a full-size rect and with no fill or style, remove it
+          if (d == "") {
+            return false;
+          }
+          if (
+            (size == 16 && d == "M0 0h16v16H0z") ||
+            (size == 20 && d == "M0 0H20V20H0z")
+          ) {
+            if (
+              (!item.hasAttr("fill") || item.attr("fill").value != "none") || 
+              (!item.hasAttr("stroke") || item.attr("stroke").value != "none")
+            ) {
+              return true;
+            }
+            return false;
+          }
+        }
+        return true;
+      },
     },
     {
       name: "removeBogusRootElementStuff",
@@ -65,45 +114,14 @@ module.exports = {
       }
     },
     {
-      name: "removePlaceholderRect",
-      description: "Many of the icon SVGs have an empty, fill:none rect; remove it.",
-      type: "perItem",
-      fn: (item) => {
-        // runs after the rect and other shapes are converted to paths by convertShapeToPath plugin
-        if (item.isElem("path")) {
-          let size = getIconSizeForElem(item);
-          let d = item.attr("d").value;
-          console.log("got size for path: ", size, d);
-          if (d == "") {
-            return false;
-          }
-          // if (size == 20 && d == "0h20v20h0z") {
-          //   return false;
-          // }
-          if (size == 16 && d == "M0 0h16v16H0z") {
-            return false;
-          }
-          if (size == 20 && d == "M0 0H20V20H0z") {
-            return false;
-          }
-
-          // if (size == 12 && d == "0h12v12h0z") {
-          //   return false;
-          // }
-        }
-        return true;
-      },
-    },
-    {
       name: "removeEmptyStyle",
       description: "Remove any empty style elements",
       type: "perItem",
       active: true,
       fn: (item, params) => {
         if (item.isElem('style')) {
-          console.log('removeEmptyStyle:',  item);
           let cssText = item.content[0].text || item.content[0].cdata;
-          if (!cssText || !cssText.length) {
+          if (!cssText) {
             return false;
           }
         }
@@ -114,10 +132,7 @@ module.exports = {
       name: "addWidthHeightAttributes",
       description: "All the icons should have width and height attributes on the SVG element",
       type: "perItem",
-      params: {
-        reduceSize: false 
-      },
-      active: false,
+      active: true,
       fn: (item, params) => {
         if (item.isElem("svg") && item.hasAttr("viewBox")) {
           let viewBox = item.attr("viewBox").value;
