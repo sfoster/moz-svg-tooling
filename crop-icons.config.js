@@ -87,6 +87,16 @@ module.exports = {
               return true;
             }
           }
+          // convertShapeToPath is missing the circles, do the offseting here 
+          if (item.elem == "circle") {
+            let x = item.attr("cx").value;
+            let y = item.attr("cy").value;
+            if (x && y) {
+              item.attr("cx").value = parseFloat(x) - 2;
+              item.attr("cy").value = parseFloat(y) - 2;
+            }
+            return true;
+          }
 
           let transforms = [];
           if (item.hasAttr("transform")) {
@@ -152,7 +162,7 @@ module.exports = {
     },
     {
       name: "resizeViewbox",
-      description: "Substract the 2px padding from the viewBox",
+      description: "Subtract the 2px padding from the viewBox",
       type: "full",
       active: true,
       fn: (data) => {
