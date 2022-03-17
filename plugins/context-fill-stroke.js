@@ -7,20 +7,61 @@ exports.active = true;
 
 exports.name = "context-fill-stroke";
 exports.description = 'Remove inline fill/stroke styles add add context-fill and context-stroke on the svg';
+exports.params = {
+  fill: "*",
+  stroke: "*",
+  opacity: 1,
+};
 
-exports.fn = function(item) {
+exports.fn = function(item, params) {
+  let contextColors = {};
+  for (let attrName of ["fill", "stroke"]) {
+    let value = params[attrName];
+    if (!value || value == "*") {
+      continue;
+    }
+    if (!Array.isArray(value)) {
+      value = [value];
+    }
+    for (let color of value) {
+      contextColors[color] = "context-" + attrName;
+    }
+  }
+  for (let attrName of ["fill", "stroke"]) {
+    let attr = item.attr(attrName);
+    if (!attr || attr.value === "none") {
+      continue;
+    }
+    if (attrName == "opacity") {
+      if (attr.value == params.opacity) {
+        attr.value = "context-opacity";
+      }
+    } else if (attr.value in contextColors) {
+      attr.value = contextColors[attr.value];
+    }
+  }
+
   if (item.hasAttr("style")) {
-    let hasFill, hasStroke, hasOpacity;
+    let styleValues = {};
     let properties = [];
     let styleAttr = item.attr("style");
     for (let property of styleAttr.value.split(/;\s*/)) {
       let [name, value] = property.split(/\s*:\s*/);
+      value = value.toLowerCase();
       switch (name.toLowerCase()) {
         case "fill":
-          hasFill = value.toLowerCase() !== "none"; 
+          if (value.toLowerCase() !== "none" && (params.fill == "*" || (value in contextColors))) {
+            styleValues.fill = contextColors[value];
+          }
           break;
         case "stroke":
-          hasStroke = value.toLowerCase() !== "none"; 
+          if (value.toLowerCase() !== "none" && (params.stroke == "*" || (value in contextColors))) {
+            styleValues.stroke = contextColors[value];
+          }
+        case "opacity":
+          if (value.toLowerCase() !== "none" && (params.opacity == "*" || value == params.opacity)) {
+            styleValues.opacity = "context-opacity";
+          }
         default: 
           properties.push(property);
       }
@@ -30,19 +71,16 @@ exports.fn = function(item) {
     } else {
       item.removeAttr("style");
     }
-    if (hasFill) {
-      let svgParent = item.closestElem("svg");
-      if (svgParent) {
-        svgParent.addAttr({ name: "fill", local: "fill", value: "context-fill", prefix: "" });
-        svgParent.addAttr({ name: "fill-opacity", local: "fill-opacity", value: "context-fill-opacity", prefix: "" });
-      } 
-    }
-    if (hasStroke) {
-      let svgParent = item.closestElem("svg");
-      if (svgParent) {
-        svgParent.addAttr({ name: "stroke", local: "stroke", value: "context-stroke", prefix: "" });
-        svgParent.addAttr({ name: "stroke-opacity", local: "stroke-opacity", value: "context-stroke-opacity", prefix: "" });
-      } 
+    // override attribute values with values from style
+    for (let attrName of ["fill", "stroke", "opacity"]) {
+      if (styleValues[attrName]) {
+        let attr = item.attr(attrName);
+        if (attr) {
+          attr.value = styleValues[attrName];
+        } else {
+          item.addAttr({ name: attrName, local: attrName, value: styleValues[attrName], prefix: "" });
+        }
+      }
     }
   }
   return true;

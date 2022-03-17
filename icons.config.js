@@ -156,7 +156,12 @@ module.exports = {
         }
       },
     },
-    contextFillStrokePlugin,
+    Object.assign({}, contextFillStrokePlugin, {
+      active: true,
+      params: Object.assign({}, contextFillStrokePlugin.params, {
+        fill: "#5B5B66"
+      }),
+    }),
     addLicensePlugin,
   ]),
   js2svg: {
