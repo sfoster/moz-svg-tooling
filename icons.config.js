@@ -1,7 +1,12 @@
-const { extendDefaultPlugins } = require('svgo');
-// const flattenTransforms = require('./plugins/flatten-transforms.js');
 const addLicensePlugin = require('./plugins/add-license.js');
 const contextFillStrokePlugin = require('./plugins/context-fill-stroke.js');
+
+const JSAPI = require('svgo/lib/svgo/jsAPI.js');
+const {
+  querySelector,
+  closestByName,
+  visitSkip,
+} = require('svgo/lib/xast.js');
 
 function getIconSizeForElem(item) {
   const vbSizeMapping = {
@@ -9,161 +14,175 @@ function getIconSizeForElem(item) {
     "0 0 16 16": 16,
     "0 0 12 12": 12,
   };
-  let svg = item.isElem('svg') ? item : item.closestElem('svg');
-  let viewBox = svg.attr("viewBox").value;
+  let svg = item.name == "svg" ? item : closestByName(item, "svg");
+  let viewBox = svg.attributes.viewBox;
   let size = vbSizeMapping[viewBox];
   return size;
 }
 
 module.exports = {
   multipass: true, // boolean. false by default
-  plugins: extendDefaultPlugins([
+  plugins: [
+    {
+      name: "preset-default",
+      params: {
+        overrides: {
+          convertPathData: {
+            'straightCurves': false,
+            'lineShorthands': false,
+            'curveSmoothShorthands': false,
+          },
+          mergePaths: false,
+          removeViewBox: false,
+          cleanupNumericValues: {
+            floatPrecision: 2
+          },
+          inlineStyles: {
+            onlyMatchedOnce: false,
+            removeMatchedSelectors: true,
+            useMqs: ['', 'screen'],
+            usePseudos: [''],
+          }
+        }
+      }
+    },
     {
       name: "removeClassedPlaceholderRect",
       description: "Many of the icons have a empty fill:none rect, possible via a class of cls-2; remove it",
-      type: "perItem",
+      type: "visitor",
       active: true,
-      fn: (item) => {
-        if (item.hasAttr("class") && item.attr("class").value.includes("cls-2")) {
-          return false;
+      fn: () => {
+        return {
+          element: {
+            enter: (node, parentNode) => {
+              if (node.attributes.class && attributes.class.includes("cls-2")) {
+                return visitSkip;
+              }
+              let styleValue = node.attributes.style;
+              if (styleValue && styleValue.match(/\s*fill\s*:\s*none[;\s]*/)) {
+                return visitSkip;
+              }
+            }
+          }
         }
-        let styleValue = item.hasAttr("style") && item.attr("style").value;
-        if (styleValue && styleValue.match(/\s*fill\s*:\s*none[;\s]*/)) {
-          return false;
-        }
-        return true;
-      }
-    },
-    {
-      name: 'convertPathData',
-      active: true,
-      params: {
-        'straightCurves': false,
-        'lineShorthands': false,
-        'curveSmoothShorthands': false,
-      }
-    },
-    {
-      name: 'mergePaths',
-      active: false
-    },
-    {
-      name: 'cleanupNumericValues',
-      active: true,
-      params: {
-        floatPrecision: 2
-      }
-    },
-    {
-      name: 'removeViewBox',
-      active: false
-    },
-    {
-      name: 'inlineStyles',
-      active: true,
-      params: {
-        onlyMatchedOnce: false,
-        removeMatchedSelectors: true,
-        useMqs: ['', 'screen'],
-        usePseudos: [''],
       }
     },
     {
       name: "removePlaceholderRect",
       description: "Many of the icon SVGs have an empty, full-size, fill=none rect; remove it.",
-      type: "perItem",
-      active: false,
-      fn: (item) => {
+      type: "visitor",
+      active: true,
+      fn: () => {
         // runs after the rect and other shapes are converted to paths by convertShapeToPath plugin
-        if (item.isElem("path")) {
-          let size = getIconSizeForElem(item);
-          let d = item.attr("d").value;
-          // if its a full-size rect and with no fill or style, remove it
-          if (d == "") {
-            return false;
-          }
-          if (
-            (size == 16 && d == "M0 0h16v16H0z") ||
-            (size == 20 && d == "M0 0H20V20H0z")
-          ) {
-            if (
-              (!item.hasAttr("fill") || item.attr("fill").value != "none") || 
-              (!item.hasAttr("stroke") || item.attr("stroke").value != "none")
-            ) {
-              return true;
+        return {
+          element: {
+            enter: (node, parentNode) => {
+              if (node.name !== "path") {
+                return;
+              }
+              let d = node.attributes.d;
+              if (!d) {
+                return;
+              }
+              d = d.toLowerCase();
+              let size = getIconSizeForElem(node);
+              // if its a full-size rect and with no fill or style, remove it
+              if (
+                (size == 16 && d == "m0 0h16v16h0z") ||
+                (size == 20 && d == "m0 0h20v20h0z")
+              ) {
+                if (
+                  (!node.attributes.fill || node.attributes.fill == "none") ||
+                  (!node.attributes.stroke || node.attributes.stroke == "none")
+                ) {
+                  console.log("visitSkip:", size);
+                  return visitSkip;
+                }
+              }
             }
-            return false;
           }
         }
-        return true;
       },
     },
     {
       name: "removeBogusRootElementStuff",
-      type: "full",
-      fn: (data) => {
-        for (let item of data.content) {
-          if (item.isElem('svg')) {
-            item.removeAttr("id");
-            item.removeAttr("data-name");
-            item.removeAttr("style");
-            item.removeAttr("xml:space");
+      type: "visitor",
+      fn: () => {
+        return {
+          root: {
+            enter: (node) => {
+              if (!(node.children && node.children.length)) {
+                return;
+              }
+              for (let item of node.children) {
+                if (item.name == "svg") {
+                  delete item.attributes["id"];
+                  delete item.attributes["data-name"];
+                  delete item.attributes["style"];
+                  delete item.attributes["xml:space"];
+                }
+              }
+            }
           }
         }
-        return data;
       }
     },
     {
       name: "removeEmptyStyle",
       description: "Remove any empty style elements",
-      type: "perItem",
+      type: "visitor",
       active: true,
-      fn: (item, params) => {
-        if (item.isElem('style')) {
-          let cssText = item.content[0].text || item.content[0].cdata;
-          if (!cssText) {
-            return false;
+      fn: () => {
+        return {
+          element: (node, parentNode) => {
+            if (node.name == "style") {
+              if (!node.children.length) {
+                return;
+              }
+              let cssText = "";
+              for (let child of node.children) {
+                cssText += child.value;
+              }
+              if (!cssText.trim()) {
+                return visitSkip;
+              }
+            }
           }
         }
-        return true;
       }
     },
     {
       name: "addWidthHeightAttributes",
       description: "All the icons should have width and height attributes on the SVG element",
-      type: "perItem",
+      type: "visitor",
       active: true,
-      fn: (item, params) => {
-        if (item.isElem("svg") && item.hasAttr("viewBox")) {
-          let viewBox = item.attr("viewBox").value;
-          let size = getIconSizeForElem(item);
-          if (size) {
-            item.addAttr({
-                    name: 'width',
-                    value: size,
-                    prefix: '',
-                    local: 'width',
-            });
-            item.addAttr({
-                    name: 'height',
-                    value: size,
-                    prefix: '',
-                    local: 'height',
-            });
-          } else {
-            console.log("Unexpected viewBox:" + viewBox);
+      fn: () => {
+        return {
+          element: {
+            enter: (node, parentNode) => {
+              if (node.name == "svg" && node.attributes.viewBox) {
+                let viewBox = node.attributes.viewBox;
+                let size = getIconSizeForElem(node);
+                if (size) {
+                  node.attributes.width = size;
+                  node.attributes.height = size;
+                } else {
+                  console.log("Unexpected viewBox:" + viewBox);
+                }
+              }
+            }
           }
         }
       },
     },
-    Object.assign({}, contextFillStrokePlugin, {
-      active: true,
-      params: Object.assign({}, contextFillStrokePlugin.params, {
-        fill: "#5B5B66"
-      }),
-    }),
+    // Object.assign({}, contextFillStrokePlugin, {
+    //   active: true,
+    //   params: Object.assign({}, contextFillStrokePlugin.params, {
+    //     fill: "#5B5B66"
+    //   }),
+    // }),
     addLicensePlugin,
-  ]),
+  ],
   js2svg: {
     indent: 2, // string with spaces or number of spaces. 4 by default
     pretty: true, // boolean, false by default

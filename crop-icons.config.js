@@ -1,26 +1,20 @@
 const { extendDefaultPlugins } = require('svgo');
 const collections = require('svgo/plugins/_collections.js');
-const JSAPI = require('svgo/lib/svgo/jsAPI.js');
-
+const removeEmptyShapes = require('./plugins/remove-empty-shapes.js');
 /**
- * The icon shapes/paths are all the correct size, but have 2px padding around them. 
+ * The icon shapes/paths are all the correct size, but have 2px padding around them.
  */
 
-function getIconSizeForElem(item) {
-  let svg = item.isElem('svg') ? item : item.closestElem('svg');
-  let viewBox;
-  try {
-    viewBox = svg.attr("viewBox").value;
-  } catch (e) {
-    console.log("Failed to get viewBox from:", svg);
-    throw e;
-  }
-  let [x, y, vbWidth, vbHeight] = viewBox.split(' ').map(v => parseFloat(v));
-  if (vbWidth != vbHeight) {
-    console.log("Unexpected viewBox width/height: not square:", vbWidth, vbHeight);
-  }
-  let size = vbWidth - 4;
-  console.log("getIconSizeForElem, returning", size, "from: " + viewBox);
+function getTargetIconSizeForElem(item) {
+  const vbSizeMapping = {
+    "0 0 24 24": 24,
+    "0 0 20 20": 20,
+    "0 0 16 16": 16,
+    "0 0 12 12": 12,
+  };
+  let svg = item.name == "svg" ? item : item.closestElem("svg");
+  let viewBox = svg.attributes.viewBox;
+  let size = vbSizeMapping[viewBox];
   return size;
 }
 
@@ -29,151 +23,162 @@ module.exports = {
   plugins: [
     {
       name: "removeBogusRootElementStuff",
-      type: "full",
-      fn: (data) => {
-        for (let item of data.content) {
-          if (item.isElem('svg')) {
-            item.removeAttr("id");
-            item.removeAttr("data-name");
-            item.removeAttr("style");
-            item.removeAttr("xml:space");
-            if (item.hasAttr("x")) {
-              if (parseFloat(item.attr("x").value) != 0) {
-                throw new Error("Non-0 origin");
+      type: "visitor",
+      fn: () => {
+        return {
+          root: {
+            enter: (node) => {
+              if (!(node.children && node.children.length)) {
+                return;
               }
-              item.removeAttr("x");
-            }
-            if (item.hasAttr("y")) {
-              if (parseFloat(item.attr("y").value) != 0) {
-                throw new Error("Non-0 origin");
+              for (let item of node.children) {
+                if (item.name == "svg") {
+                  delete item.attributes["id"];
+                  delete item.attributes["data-name"];
+                  delete item.attributes["style"];
+                  delete item.attributes["x"];
+                  delete item.attributes["y"];
+                  // we'll use viewBox for width/height
+                  item.removeAttr("width");
+                  item.removeAttr("height");
+                }
               }
-              item.removeAttr("y");
             }
-            item.removeAttr("width");
-            item.removeAttr("height");
           }
         }
-        return data;
       }
     },
+    removeEmptyShapes,
     {
       name: "offsetPathsAndShapes",
+      type: "visitor",
       description: "Adds a transform to move all paths & shapes up & left by 2",
-      type: "perItem",
-      fn: (item) => {
-        // add a transform attr to any shape or path element
-        if (collections.elemsGroups.shape.includes(item.elem) || collections.pathElems.includes(item.elem)) {
-          let width = item.hasAttr("width") && item.attr("width").value;
-          let height = item.hasAttr("height") && item.attr("height").value;
-          if (width && height) {
-            // if this is a full width/height shape, we want to adjust its dimensions, not move it
-            // this is expecting a <rect>. If its already a <path d=""> its not going to work...
-            // find the ancestor svg element
-            let svgElem = item.closestElem("svg");
-            let vbValue = svgElem.attr("viewBox").value;
-            if (!vbValue) {
-              console.log("Unexpected viewBox:", svgElem.hasAttr("viewBox") ? vbValue : "missing viewBox attribute on svg parent");
-              return true;
-            }
-            let [x, y, vbWidth, vbHeight] = vbValue.split(' ');
-
-            if (width >= vbWidth && height >= vbHeight) {
-              if (item.hasAttr("class") && item.attr("class").value.includes("cls-2")) {
-                // these are empty, transparent rects we can just remove
-                return false;
+      fn: () => {
+        return {
+          element: {
+            enter: (node, parentNode) => {
+              // add a transform attr to any shape or path element
+              if (!(collections.elemsGroups.shape.includes(node.name) || collections.pathElems.includes(node.name))) {
+                return;
               }
-              item.attr("width").value = vbWidth - 4;
-              item.attr("height").value = vbHeight - 4;
-              return true;
-            }
-          }
-          // convertShapeToPath is missing the circles, do the offseting here 
-          if (item.elem == "circle") {
-            let x = item.attr("cx").value;
-            let y = item.attr("cy").value;
-            if (x && y) {
-              item.attr("cx").value = parseFloat(x) - 2;
-              item.attr("cy").value = parseFloat(y) - 2;
-            }
-            return true;
-          }
+              let width = node.attributes.width && parseFloat(node.attributes.width);
+              let height = node.attributes.height && parseFloat(node.attributes.height);
 
-          let transforms = [];
-          if (item.hasAttr("transform")) {
-            transforms = item.attr("transform").value.split(/,\s*/);
-          } else {
-            item.addAttr({
-              name:   'transform',
-              prefix: '',
-              local:  'transform',
-              value:  ''
-            });
+              if (width && height) {
+                let svgElem = node.closestElem("svg");
+                let vbValue = svgElem.attributes.viewBox;
+                if (!vbValue) {
+                  console.log("Unexpected viewBox:", ("viewBox" in svgElem.atttributes) ? "missing viewBox attribute on svg parent" : vbValue);
+                  return;
+                }
+                let [x, y, vbWidth, vbHeight] = vbValue.split(' ').map(val => parseFloat(val));
+                if (width >= vbWidth && height >= vbHeight) {
+                  if (
+                    node.attributes['class'] && node.attributes['class'].includes("cls-2")
+                  ) {
+                    // these are empty, transparent rects we can just remove
+                    parentNode.children = parentNode.children.filter((child) => child !== node);
+                    return;
+                  }
+                  node.attributes.width = (vbWidth - 4).toString();
+                  node.attributes.height = (vbHeight - 4).toString();
+                  return;
+                }
+              }
+              // convertShapeToPath is missing the circles, do the offseting here
+              if (node.name == "circle") {
+                let x = node.attributes["cx"];
+                let y = node.attributes["cy"];
+                if (x && y) {
+                  item["cx"] = (parseFloat(x) - 2).toString();
+                  item["cy"] = (parseFloat(y) - 2).toString();
+                }
+                return;
+              }
+
+              let transforms = [];
+              if (node.attributes["transform"]) {
+                transforms = node.attributes["transform"].split(/,\s*/);
+              }
+              transforms.push('translate(-2,-2)');
+              node.attributes["transform"] = transforms.join(",");
+              console.log("added transform:", node.name, node.attributes["transform"]);
+            }
           }
-          transforms.push('translate(-2,-2)');
-          item.attr("transform").value = transforms.join(",");
         }
-        return true;
       }
     },
     {
       name: "resizeFullsizeRects",
       description: "Adjust size of full-width & height rects",
-      type: "full",
+      type: "visitor",
       active: true,
-      fn: (data) => {
-        let svg = data.content.find(item => item.isElem("svg"));
-        let iconSize = getIconSizeForElem(svg);
-        console.log("got iconSize", iconSize);
-        if (!iconSize) {
-          console.log("Couldn't determine size, viewBox:", svg.hasAttr("viewBox") ? svg.attr("viewBox").value : "missing viewBox attribute");
-          return data;
-        }
-        let rects = svg.querySelectorAll(`rect[width='${iconSize+4}'][height='${iconSize+4}']`);
-        if (rects) {
-          for (let rect of rects) {
-            // adjust any full-size rects
-            rect.attr("height").value = iconSizen;
-            rect.attr("width").value = iconSize;
+      fn: () => {
+        let iconSize;
+        return {
+          element: {
+            enter: (node, parentNode) => {
+              if (node.name == "svg") {
+                iconSize = getTargetIconSizeForElem(node);
+                console.log("got iconSize", iconSize);
+                if (!iconSize) {
+                  console.log("Couldn't determine size, viewBox:", node.hasAttr("viewBox") ? node.attributes.viewBox : "missing viewBox attribute");
+                  return;
+                }
+              }
+              if (node.name == "rect" && node.attributes.width && node.attributes.height) {
+                if (
+                  parseInt(node.attributes.width) == iconSize + 4 &&
+                  parseInt(node.attributes.height) == iconSize + 4
+                ) {
+                  node.attributes.width = "" + iconSize;
+                  node.attributes.height = "" + iconSize;
+                }
+              }
+            }
           }
         }
-        return data;
       }
     },
     {
-      name: 'convertShapeToPath',
-      active: true, // convertPathData will flatten the transforms, but only on path elements
-    },
-    {
-      name: 'convertTransform',
-      active: true
-    },
-    {
-      name: 'convertPathData',
-      active: true,
+      name: "preset-default",
       params: {
-        'straightCurves': false,
-        'lineShorthands': false,
-        'curveSmoothShorthands': false,
+        overrides: {
+          convertPathData: {
+            'straightCurves': false,
+            'lineShorthands': false,
+            'curveSmoothShorthands': false,
+          },
+          inlineStyles: false,
+          mergePaths: false,
+          removeViewBox: false,
+          convertStyleToAttrs: false,
+          convertShapeToPath: false,
+          cleanupNumericValues: false,
+        }
       }
-    },
-    {
-      name: "inlineStyles",
-      active: false,
     },
     {
       name: "resizeViewbox",
       description: "Subtract the 2px padding from the viewBox",
-      type: "full",
+      type: "visitor",
       active: true,
       fn: (data) => {
-        let svg = data.content.find(item => item.isElem("svg"));
-        let iconSize = getIconSizeForElem(svg);
-        if (!iconSize) {
-          console.log("Unexpected iconSize:", svg.hasAttr("viewBox") ? svg.attr("viewBox").value : "missing viewBox attribute");
-          return data;
-        }
-        svg.attr("viewBox").value = [0, 0, iconSize, iconSize].join(" ");
-        return data;
+        return {
+          element: {
+            enter: (node, parentNode) => {
+              if (node.name == "svg") {
+                let iconSize = getTargetIconSizeForElem(node);
+                if (!iconSize) {
+                  console.log("Unexpected iconSize:", node.hasAttr("viewBox") ? node.attributes.viewBox : "missing viewBox attribute");
+                  return;
+                }
+                node.attributes.viewBox = [0, 0, iconSize-4, iconSize-4].join(" ");
+                console.log("new viewBox:", node.attributes.viewBox);
+              }
+            }
+          }
+        };
       }
     }
   ],
