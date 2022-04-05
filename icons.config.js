@@ -1,5 +1,6 @@
 const addLicensePlugin = require('./plugins/add-license.js');
 const contextFillStrokePlugin = require('./plugins/context-fill-stroke.js');
+const removeEmptyShapesPlugin = require('./plugins/remove-empty-shapes.js');
 
 const JSAPI = require('svgo/lib/svgo/jsAPI.js');
 const {
@@ -46,27 +47,7 @@ module.exports = {
         }
       }
     },
-    {
-      name: "removeClassedPlaceholderRect",
-      description: "Many of the icons have a empty fill:none rect, possible via a class of cls-2; remove it",
-      type: "visitor",
-      active: true,
-      fn: () => {
-        return {
-          element: {
-            enter: (node, parentNode) => {
-              if (node.attributes.class && attributes.class.includes("cls-2")) {
-                return visitSkip;
-              }
-              let styleValue = node.attributes.style;
-              if (styleValue && styleValue.match(/\s*fill\s*:\s*none[;\s]*/)) {
-                return visitSkip;
-              }
-            }
-          }
-        }
-      }
-    },
+    removeEmptyShapesPlugin,
     {
       name: "removePlaceholderRect",
       description: "Many of the icon SVGs have an empty, full-size, fill=none rect; remove it.",
@@ -95,8 +76,8 @@ module.exports = {
                   (!node.attributes.fill || node.attributes.fill == "none") ||
                   (!node.attributes.stroke || node.attributes.stroke == "none")
                 ) {
-                  console.log("visitSkip:", size);
-                  return visitSkip;
+                  console.log("removing empty element:", node.name, d, size);
+                  parentNode.children = parentNode.children.filter((child) => child !== node);
                 }
               }
             }
@@ -136,15 +117,13 @@ module.exports = {
         return {
           element: (node, parentNode) => {
             if (node.name == "style") {
-              if (!node.children.length) {
-                return;
-              }
               let cssText = "";
               for (let child of node.children) {
                 cssText += child.value;
               }
               if (!cssText.trim()) {
-                return visitSkip;
+                // the whole style element is just empty text nodes
+                parentNode.children = parentNode.children.filter((child) => child !== node);
               }
             }
           }
@@ -164,8 +143,8 @@ module.exports = {
                 let viewBox = node.attributes.viewBox;
                 let size = getIconSizeForElem(node);
                 if (size) {
-                  node.attributes.width = size;
-                  node.attributes.height = size;
+                  node.attributes.width = ""+size;
+                  node.attributes.height = ""+size;
                 } else {
                   console.log("Unexpected viewBox:" + viewBox);
                 }
@@ -175,12 +154,13 @@ module.exports = {
         }
       },
     },
-    // Object.assign({}, contextFillStrokePlugin, {
-    //   active: true,
-    //   params: Object.assign({}, contextFillStrokePlugin.params, {
-    //     fill: "#5B5B66"
-    //   }),
-    // }),
+    Object.assign({}, contextFillStrokePlugin, {
+      active: true,
+      params: Object.assign({}, contextFillStrokePlugin.params, {
+        fill: "#5b5b66",
+        stroke: ["yellow", "#ff0"]
+      }),
+    }),
     addLicensePlugin,
   ],
   js2svg: {

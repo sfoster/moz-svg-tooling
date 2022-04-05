@@ -1,7 +1,7 @@
 'use strict';
 /*eslint strict:0*/
 
-exports.type = 'perItem';
+exports.type = 'visitor';
 
 exports.active = true;
 
@@ -13,8 +13,10 @@ exports.params = {
   opacity: 1,
 };
 
-exports.fn = function(item, params) {
-  let contextColors = {};
+exports.fn = (root, params) => {
+  // collect together the fill/stroke colors we want to replace with
+  // the context-fill / context-stroke
+  const contextColors = {};
   for (let attrName of ["fill", "stroke"]) {
     let value = params[attrName];
     if (!value || value == "*") {
@@ -27,61 +29,69 @@ exports.fn = function(item, params) {
       contextColors[color] = "context-" + attrName;
     }
   }
-  for (let attrName of ["fill", "stroke"]) {
-    let attr = item.attr(attrName);
-    if (!attr || attr.value === "none") {
-      continue;
-    }
-    if (attrName == "opacity") {
-      if (attr.value == params.opacity) {
-        attr.value = "context-opacity";
-      }
-    } else if (attr.value in contextColors) {
-      attr.value = contextColors[attr.value];
-    }
-  }
+  console.log("contextColors:", contextColors);
 
-  if (item.hasAttr("style")) {
-    let styleValues = {};
-    let properties = [];
-    let styleAttr = item.attr("style");
-    for (let property of styleAttr.value.split(/;\s*/)) {
-      let [name, value] = property.split(/\s*:\s*/);
-      value = value.toLowerCase();
-      switch (name.toLowerCase()) {
-        case "fill":
-          if (value.toLowerCase() !== "none" && (params.fill == "*" || (value in contextColors))) {
-            styleValues.fill = contextColors[value];
+  return {
+    element: {
+      enter: (node, parentNode) => {
+        for (let attrName of ["fill", "stroke", "opacity"]) {
+          let attr = node.attributes[attrName];
+          if (!attr) {
+            continue;
           }
-          break;
-        case "stroke":
-          if (value.toLowerCase() !== "none" && (params.stroke == "*" || (value in contextColors))) {
-            styleValues.stroke = contextColors[value];
+          if (attrName == "opacity") {
+            if (attr.value == params.opacity) {
+              attr.value = "context-opacity";
+            }
+          } else if (attr.value in contextColors) {
+            attr.value = contextColors[attr.value];
           }
-        case "opacity":
-          if (value.toLowerCase() !== "none" && (params.opacity == "*" || value == params.opacity)) {
-            styleValues.opacity = "context-opacity";
+        }
+
+        const styleAttr = node.attributes.style;
+        if (!styleAttr) {
+          return;
+        }
+        let styleValues = {};
+        let properties = [];
+        for (let property of styleAttr.split(/;\s*/)) {
+          let [name, value] = property.split(/\s*:\s*/).map(s => s.trim());
+          value = value.toLowerCase();
+          switch (name.toLowerCase()) {
+            case "fill":
+              if (value !== "none" && (params.fill == "*" || (value in contextColors))) {
+                styleValues.fill = contextColors[value];
+              }
+              break;
+            case "stroke":
+              if (value !== "none" && (params.stroke == "*" || (value in contextColors))) {
+                styleValues.stroke = contextColors[value];
+              }
+              break;
+            case "opacity":
+              if (value !== "none" && (params.opacity == "*" || value == params.opacity)) {
+                styleValues.opacity = "context-opacity";
+              }
+              break;
+            default:
+              properties.push(property);
           }
-        default: 
-          properties.push(property);
-      }
-    }
-    if (properties.length) {
-      styleAttr.value = properties.join(";");
-    } else {
-      item.removeAttr("style");
-    }
-    // override attribute values with values from style
-    for (let attrName of ["fill", "stroke", "opacity"]) {
-      if (styleValues[attrName]) {
-        let attr = item.attr(attrName);
-        if (attr) {
-          attr.value = styleValues[attrName];
+        }
+        console.log("style properties: ", properties);
+        if (properties.length) {
+          node.attributes.style = properties.join(";");
         } else {
-          item.addAttr({ name: attrName, local: attrName, value: styleValues[attrName], prefix: "" });
+          console.log("removing style, no properties in ", node.attributes.d);
+          node.removeAttr("style");
+        }
+        // override attribute values with values from style
+        for (let attrName of ["fill", "stroke", "opacity"]) {
+          if (styleValues[attrName]) {
+            let attr = node.attributes[attrName];
+            node.attributes[attrName] = "" + styleValues[attrName];
+          }
         }
       }
     }
   }
-  return true;
 }

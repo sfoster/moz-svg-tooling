@@ -1,6 +1,6 @@
 const { extendDefaultPlugins } = require('svgo');
 const collections = require('svgo/plugins/_collections.js');
-const removeEmptyShapes = require('./plugins/remove-empty-shapes.js');
+const removeEmptyShapesPlugin = require('./plugins/remove-empty-shapes.js');
 /**
  * The icon shapes/paths are all the correct size, but have 2px padding around them.
  */
@@ -48,7 +48,7 @@ module.exports = {
         }
       }
     },
-    removeEmptyShapes,
+    removeEmptyShapesPlugin,
     {
       name: "offsetPathsAndShapes",
       type: "visitor",
